@@ -1,422 +1,146 @@
-<!DOCTYPE html>
+/*
+Anonymous Live Chat - Full React App with Firebase Config
+Updated with your Firebase project credentials.
+*/
 
-<html lang="en">
+import React, { useEffect, useState, useRef } from "react";
+import { initializeApp } from "firebase/app";
+import {
+  getFirestore,
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+  addDoc,
+  serverTimestamp,
+  setDoc,
+  doc,
+  getDoc,
+  deleteDoc
+} from "firebase/firestore";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { v4 as uuidv4 } from "uuid";
 
-<head>
+// ✅ Your Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyBaHvhQDLsIVISjIe_IDl6i-iERYJLTgaI",
+  authDomain: "anon-chat-39ea7.firebaseapp.com",
+  projectId: "anon-chat-39ea7",
+  storageBucket: "anon-chat-39ea7.firebasestorage.app",
+  messagingSenderId: "809487057402",
+  appId: "1:809487057402:web:03bc9edc356bf3a69c6443"
+};
 
-  <meta charset="UTF-8">
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const storage = getStorage(app);
 
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+// Helpers
+const randomName = () => {
+  const adjectives = ["Quiet","Swift","Blue","Pixel","Shadow","Lucky","Silent","Brave","Tiny","Happy"];
+  const animals = ["Fox","Otter","Raven","Panda","Tiger","Wolf","Koala","Sparrow","Seal","Bee"];
+  return `${adjectives[Math.floor(Math.random()*adjectives.length)]}${animals[Math.floor(Math.random()*animals.length)]}${Math.floor(Math.random()*900)+100}`;
+};
 
-  <title>Live Chat App</title>
+export default function AnonymousChatApp() {
+  const [stage, setStage] = useState("lobby");
+  const [roomCode, setRoomCode] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [name, setName] = useState(() => randomName());
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const [imageFile, setImageFile] = useState(null);
+  const messagesRef = useRef(null);
 
-  <script src="https://cdn.tailwindcss.com"></script>
+  // Create room
+  const createRoom = async () => {
+    const code = Math.random().toString(36).slice(2,8).toUpperCase();
+    const rDoc = doc(db, "rooms", code);
+    await setDoc(rDoc, { code, createdAt: serverTimestamp() });
+    setRoomCode(code);
+    setStage("room");
+    subscribeToRoom(code);
+  };
 
-</head>
+  // Join room
+  const joinRoom = async () => {
+    const code = joinCode.trim().toUpperCase();
+    if (!code) return alert("Enter room code");
+    const rDoc = doc(db, "rooms", code);
+    const snap = await getDoc(rDoc);
+    if (!snap.exists()) return alert("Room not found");
+    setRoomCode(code);
+    setStage("room");
+    subscribeToRoom(code);
+  };
 
-<body class="bg-gray-100 flex flex-col h-screen">
+  const subscribeToRoom = (code) => {
+    const q = query(collection(db, "rooms", code, "messages"), orderBy("createdAt","asc"));
+    return onSnapshot(q, snap => {
+      const arr = [];
+      snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
+      setMessages(arr);
+      setTimeout(()=> messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" }), 50);
+    });
+  };
 
+  const sendMessage = async () => {
+    if (!roomCode) return;
+    let imageURL = null;
+    if (imageFile) {
+      const id = uuidv4();
+      const sRef = storageRef(storage, `rooms/${roomCode}/images/${id}`);
+      await uploadBytes(sRef, imageFile);
+      imageURL = await getDownloadURL(sRef);
+      setImageFile(null);
+    }
+    const m = { senderName: name, text, imageURL, createdAt: serverTimestamp() };
+    await addDoc(collection(db, "rooms", roomCode, "messages"), m);
+    setText("");
+  };
 
+  return (
+    <div className="min-h-screen bg-gray-100 flex flex-col">
+      {stage === "lobby" && (
+        <div className="m-auto bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
+          <h1 className="text-2xl font-bold mb-3">Anonymous Live Chat</h1>
+          <p className="text-sm text-gray-600 mb-4">Create or join a chat room. Messages auto-delete after 30 min.</p>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" className="border p-2 w-full mb-3 rounded" />
+          <button onClick={createRoom} className="w-full bg-green-500 text-white p-2 rounded mb-3">Create Room</button>
+          <div className="flex gap-2">
+            <input value={joinCode} onChange={e=>setJoinCode(e.target.value)} placeholder="Room code" className="flex-1 border p-2 rounded" />
+            <button onClick={joinRoom} className="bg-blue-500 text-white p-2 rounded">Join</button>
+          </div>
+        </div>
+      )}
 
-  <!-- Header -->
-
-  <header class="bg-blue-600 text-white p-4 text-xl font-bold shadow flex justify-between items-center">
-
-    <span>💬 Live Discussion Group</span>
-
-    <div class="flex items-center space-x-2">
-
-      <!-- Toggle Users Sidebar (only on mobile) -->
-
-      <button id="toggleUsers" class="bg-gray-200 text-blue-600 px-2 py-1 rounded md:hidden">
-
-        👥 Users
-
-      </button>
-
-      <!-- Admin controls -->
-
-      <span id="adminControls" class="hidden space-x-2">
-
-        <button onclick="clearChat()" class="bg-red-600 px-2 py-1 rounded">🗑 Clear Chat</button>
-
-      </span>
-
+      {stage === "room" && (
+        <>
+          <div className="bg-white shadow p-3 flex justify-between items-center">
+            <div>
+              <div className="text-lg font-bold">Room: {roomCode}</div>
+              <div className="text-sm text-gray-500">You: {name}</div>
+            </div>
+            <button onClick={()=>{setStage("lobby"); setRoomCode(""); setMessages([]);}} className="text-sm border p-2 rounded">Leave</button>
+          </div>
+          <div ref={messagesRef} className="flex-1 overflow-auto p-3 space-y-3">
+            {messages.map(m => (
+              <div key={m.id} className="bg-white p-3 rounded-xl shadow w-fit max-w-[80%]">
+                <div className="text-xs text-gray-500">{m.senderName}</div>
+                <div className="mt-1 whitespace-pre-wrap">{m.text}</div>
+                {m.imageURL && <img src={m.imageURL} alt="shared" className="mt-2 rounded max-h-56" />}
+              </div>
+            ))}
+          </div>
+          <div className="p-3 bg-white border-t flex gap-2">
+            <input type="file" accept="image/*" onChange={e=>setImageFile(e.target.files[0])} className="hidden" id="imgUpload" />
+            <label htmlFor="imgUpload" className="border p-2 rounded cursor-pointer">📷</label>
+            <input value={text} onChange={e=>setText(e.target.value)} placeholder="Message" className="flex-1 border p-2 rounded" />
+            <button onClick={sendMessage} className="bg-blue-600 text-white px-4 rounded">Send</button>
+          </div>
+        </>
+      )}
     </div>
-
-  </header>
-
-
-
-  <!-- Main Layout -->
-
-  <div class="flex flex-1">
-
-
-
-    <!-- Active Users Sidebar -->
-
-    <aside id="usersSidebar" class="w-2/3 md:w-1/4 bg-gray-200 p-3 border-r overflow-y-auto fixed md:static top-0 left-0 h-full z-50 transform -translate-x-full md:translate-x-0 transition-transform">
-
-      <h2 class="font-bold mb-2 flex justify-between items-center">
-
-        👥 Active Users 
-
-        <button id="closeUsers" class="md:hidden text-red-600 font-bold">✖</button>
-
-      </h2>
-
-      <ul id="usersList" class="space-y-2"></ul>
-
-    </aside>
-
-
-
-    <!-- Chat Area -->
-
-    <main id="messages" class="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50"></main>
-
-  </div>
-
-
-
-  <!-- Input box -->
-
-  <div class="p-4 bg-white flex border-t">
-
-    <input id="messageInput" type="text" 
-
-      placeholder="Type your message..." 
-
-      class="flex-1 border rounded-l-lg p-2 outline-none">
-
-    <button onclick="sendMessage()" 
-
-      class="bg-blue-600 text-white px-4 rounded-r-lg">Send</button>
-
-  </div>
-
-
-
-  <!-- Footer -->
-
-  <footer class="bg-gray-800 text-white text-center p-2 text-sm">
-
-    ©| Live Discussion Group
-
-  </footer>
-
-
-
-  <!-- Firebase Script -->
-
-  <script type="module">
-
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-
-    import { getDatabase, ref, push, onChildAdded, set, remove, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
-
-
-    const firebaseConfig = {
-
-      apiKey: "AIzaSyADybiqP-ywI9BH4VtoF9pGk5KRNaUvvbQ",
-
-      authDomain: "live-chat-app-dbc12.firebaseapp.com",
-
-      databaseURL: "https://live-chat-app-dbc12-default-rtdb.firebaseio.com",
-
-      projectId: "live-chat-app-dbc12",
-
-      storageBucket: "live-chat-app-dbc12.appspot.com",
-
-      messagingSenderId: "228763841925",
-
-      appId: "1:228763841925:web:d2f421cc6e522c0bcfc0ec",
-
-      measurementId: "G-3M1GPG8Z7D"
-
-    };
-
-
-
-    const app = initializeApp(firebaseConfig);
-
-    const db = getDatabase(app);
-
-    const chatRef = ref(db, "messages");
-
-    const usersRef = ref(db, "users");
-
-
-
-    // 🔹 Admin Password
-
-    const ADMIN_PASS = "GOLU@123";
-
-
-
-    let username = localStorage.getItem("username");
-
-    let semester = localStorage.getItem("semester");
-
-    let isAdmin = false;
-
-
-
-    // 🔹 Ask login or register
-
-    if (!username) {
-
-      const wantsAdmin = confirm("Are you admin?");
-
-      if (wantsAdmin) {
-
-        const pass = prompt("Enter admin password:");
-
-        if (pass === ADMIN_PASS) {
-
-          username = "Admin";
-
-          semester = "ADMIN";
-
-          isAdmin = true;
-
-          document.getElementById("adminControls").classList.remove("hidden");
-
-        } else {
-
-          alert("Wrong admin password!");
-
-          username = "User" + Math.floor(Math.random() * 1000);
-
-          semester = prompt("Enter your semester (e.g., 1st, 2nd, 3rd):") || "Unknown";
-
-        }
-
-      } else {
-
-        semester = prompt("Enter your semester (e.g., 1st, 2nd, 3rd):") || "Unknown";
-
-        username = "User" + Math.floor(Math.random() * 1000);
-
-      }
-
-
-
-      localStorage.setItem("username", username);
-
-      localStorage.setItem("semester", semester);
-
-    }
-
-
-
-    // 🔹 Save/update user status
-
-    function updateUserStatus() {
-
-      set(ref(db, "users/" + username), {
-
-        username: username,
-
-        semester: semester,
-
-        lastSeen: Date.now()
-
-      });
-
-    }
-
-    updateUserStatus();
-
-    setInterval(updateUserStatus, 30000); // update every 30 sec
-
-
-
-    // 🔹 Send message
-
-    window.sendMessage = function() {
-
-      const input = document.getElementById("messageInput");
-
-      if (input.value.trim() !== "") {
-
-        push(chatRef, {
-
-          user: username,
-
-          sem: semester,
-
-          text: input.value,
-
-          time: Date.now()
-
-        });
-
-        input.value = "";
-
-      }
-
-    };
-
-
-
-    // 🔹 Display messages
-
-    const messagesDiv = document.getElementById("messages");
-
-    onChildAdded(chatRef, (data) => {
-
-      const msg = data.val();
-
-      const div = document.createElement("div");
-
-
-
-      div.className = "p-2 max-w-xs rounded-lg break-words " 
-
-        + (msg.user === username 
-
-          ? "bg-blue-500 text-white ml-auto" 
-
-          : "bg-gray-200 text-black mr-auto");
-
-
-
-      div.innerHTML = `<strong>${msg.sem} - ${msg.user}:</strong> ${msg.text}`;
-
-      messagesDiv.appendChild(div);
-
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
-    });
-
-
-
-    // 🔹 Admin: Clear chat
-
-    window.clearChat = function() {
-
-      remove(chatRef);
-
-      messagesDiv.innerHTML = "";
-
-      alert("Chat cleared by Admin");
-
-    };
-
-
-
-    // 🔹 Admin: Remove user
-
-    window.removeUser = function(user) {
-
-      remove(ref(db, "users/" + user));
-
-      alert("User " + user + " removed!");
-
-    };
-
-
-
-    // 🔹 Auto-clear every 30 min
-
-    setInterval(() => {
-
-      remove(chatRef);
-
-      messagesDiv.innerHTML = "";
-
-      console.log("Chat auto-cleared every 30 min");
-
-    }, 30 * 60 * 1000);
-
-
-
-    // 🔹 Update users list
-
-    const usersList = document.getElementById("usersList");
-
-    onValue(usersRef, (snapshot) => {
-
-      usersList.innerHTML = "";
-
-      const users = snapshot.val();
-
-      if (users) {
-
-        Object.keys(users).forEach((key) => {
-
-          const user = users[key];
-
-          const li = document.createElement("li");
-
-          li.className = "flex justify-between items-center bg-white p-2 rounded shadow";
-
-
-
-          const now = Date.now();
-
-          const online = user.lastSeen && (now - user.lastSeen < 120000); // 2 min
-
-          const statusDot = online 
-
-            ? "<span class='text-green-500'>●</span>" 
-
-            : "<span class='text-gray-400'>●</span>";
-
-
-
-          li.innerHTML = `<span>${statusDot} ${user.semester} - ${user.username}</span>`;
-
-          
-
-          if (isAdmin && user.username !== "Admin") {
-
-            const btn = document.createElement("button");
-
-            btn.innerText = "❌";
-
-            btn.className = "text-red-600 font-bold ml-2";
-
-            btn.onclick = () => removeUser(user.username);
-
-            li.appendChild(btn);
-
-          }
-
-
-
-          usersList.appendChild(li);
-
-        });
-
-      }
-
-    });
-
-
-
-    // 🔹 Sidebar toggle for mobile
-
-    const usersSidebar = document.getElementById("usersSidebar");
-
-    document.getElementById("toggleUsers").addEventListener("click", () => {
-
-      usersSidebar.classList.remove("-translate-x-full");
-
-    });
-
-    document.getElementById("closeUsers").addEventListener("click", () => {
-
-      usersSidebar.classList.add("-translate-x-full");
-
-    });
-
-  </script>
-
-</body>
-
-</html>
-
+  );
+}
