@@ -1,146 +1,159 @@
-/*
-Anonymous Live Chat - Full React App with Firebase Config
-Updated with your Firebase project credentials.
-*/
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anonymous Live Chat</title>
+  <script src="https://www.gstatic.com/firebasejs/10.6.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.6.0/firebase-storage-compat.js"></script>
+  <style>
+    body { margin:0; font-family:sans-serif; background:#f3f4f6; display:flex; flex-direction:column; align-items:center; }
+    .container { max-width:400px; width:100%; margin-top:20px; background:#fff; padding:15px; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.1);}
+    input, button { padding:8px; margin-bottom:10px; border-radius:5px; border:1px solid #ccc; width:100%; box-sizing:border-box; }
+    button { background:#3b82f6; color:#fff; border:none; cursor:pointer; }
+    .messages { border:1px solid #ccc; height:300px; overflow-y:auto; padding:5px; margin-bottom:10px; border-radius:5px; background:#f9f9f9;}
+    .message { padding:5px; margin-bottom:5px; background:#e0e7ff; border-radius:5px; word-wrap:break-word;}
+    img { max-width:80%; margin-top:5px; border-radius:5px;}
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+  <div class="container" id="lobby">
+    <h2>Anonymous Live Chat</h2>
+    <input type="text" id="name" placeholder="Your name">
+    <button id="createRoomBtn">Create Room</button>
+    <input type="text" id="joinCode" placeholder="Room Code">
+    <button id="joinRoomBtn">Join Room</button>
+  </div>
 
-import React, { useEffect, useState, useRef } from "react";
-import { initializeApp } from "firebase/app";
-import {
-  getFirestore,
-  collection,
-  query,
-  orderBy,
-  onSnapshot,
-  addDoc,
-  serverTimestamp,
-  setDoc,
-  doc,
-  getDoc,
-  deleteDoc
-} from "firebase/firestore";
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
-import { v4 as uuidv4 } from "uuid";
-
-// ✅ Your Firebase config
-const firebaseConfig = {
-  apiKey: "AIzaSyBaHvhQDLsIVISjIe_IDl6i-iERYJLTgaI",
-  authDomain: "anon-chat-39ea7.firebaseapp.com",
-  projectId: "anon-chat-39ea7",
-  storageBucket: "anon-chat-39ea7.firebasestorage.app",
-  messagingSenderId: "809487057402",
-  appId: "1:809487057402:web:03bc9edc356bf3a69c6443"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const storage = getStorage(app);
-
-// Helpers
-const randomName = () => {
-  const adjectives = ["Quiet","Swift","Blue","Pixel","Shadow","Lucky","Silent","Brave","Tiny","Happy"];
-  const animals = ["Fox","Otter","Raven","Panda","Tiger","Wolf","Koala","Sparrow","Seal","Bee"];
-  return `${adjectives[Math.floor(Math.random()*adjectives.length)]}${animals[Math.floor(Math.random()*animals.length)]}${Math.floor(Math.random()*900)+100}`;
-};
-
-export default function AnonymousChatApp() {
-  const [stage, setStage] = useState("lobby");
-  const [roomCode, setRoomCode] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [name, setName] = useState(() => randomName());
-  const [messages, setMessages] = useState([]);
-  const [text, setText] = useState("");
-  const [imageFile, setImageFile] = useState(null);
-  const messagesRef = useRef(null);
-
-  // Create room
-  const createRoom = async () => {
-    const code = Math.random().toString(36).slice(2,8).toUpperCase();
-    const rDoc = doc(db, "rooms", code);
-    await setDoc(rDoc, { code, createdAt: serverTimestamp() });
-    setRoomCode(code);
-    setStage("room");
-    subscribeToRoom(code);
-  };
-
-  // Join room
-  const joinRoom = async () => {
-    const code = joinCode.trim().toUpperCase();
-    if (!code) return alert("Enter room code");
-    const rDoc = doc(db, "rooms", code);
-    const snap = await getDoc(rDoc);
-    if (!snap.exists()) return alert("Room not found");
-    setRoomCode(code);
-    setStage("room");
-    subscribeToRoom(code);
-  };
-
-  const subscribeToRoom = (code) => {
-    const q = query(collection(db, "rooms", code, "messages"), orderBy("createdAt","asc"));
-    return onSnapshot(q, snap => {
-      const arr = [];
-      snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
-      setMessages(arr);
-      setTimeout(()=> messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" }), 50);
-    });
-  };
-
-  const sendMessage = async () => {
-    if (!roomCode) return;
-    let imageURL = null;
-    if (imageFile) {
-      const id = uuidv4();
-      const sRef = storageRef(storage, `rooms/${roomCode}/images/${id}`);
-      await uploadBytes(sRef, imageFile);
-      imageURL = await getDownloadURL(sRef);
-      setImageFile(null);
-    }
-    const m = { senderName: name, text, imageURL, createdAt: serverTimestamp() };
-    await addDoc(collection(db, "rooms", roomCode, "messages"), m);
-    setText("");
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
-      {stage === "lobby" && (
-        <div className="m-auto bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
-          <h1 className="text-2xl font-bold mb-3">Anonymous Live Chat</h1>
-          <p className="text-sm text-gray-600 mb-4">Create or join a chat room. Messages auto-delete after 30 min.</p>
-          <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" className="border p-2 w-full mb-3 rounded" />
-          <button onClick={createRoom} className="w-full bg-green-500 text-white p-2 rounded mb-3">Create Room</button>
-          <div className="flex gap-2">
-            <input value={joinCode} onChange={e=>setJoinCode(e.target.value)} placeholder="Room code" className="flex-1 border p-2 rounded" />
-            <button onClick={joinRoom} className="bg-blue-500 text-white p-2 rounded">Join</button>
-          </div>
-        </div>
-      )}
-
-      {stage === "room" && (
-        <>
-          <div className="bg-white shadow p-3 flex justify-between items-center">
-            <div>
-              <div className="text-lg font-bold">Room: {roomCode}</div>
-              <div className="text-sm text-gray-500">You: {name}</div>
-            </div>
-            <button onClick={()=>{setStage("lobby"); setRoomCode(""); setMessages([]);}} className="text-sm border p-2 rounded">Leave</button>
-          </div>
-          <div ref={messagesRef} className="flex-1 overflow-auto p-3 space-y-3">
-            {messages.map(m => (
-              <div key={m.id} className="bg-white p-3 rounded-xl shadow w-fit max-w-[80%]">
-                <div className="text-xs text-gray-500">{m.senderName}</div>
-                <div className="mt-1 whitespace-pre-wrap">{m.text}</div>
-                {m.imageURL && <img src={m.imageURL} alt="shared" className="mt-2 rounded max-h-56" />}
-              </div>
-            ))}
-          </div>
-          <div className="p-3 bg-white border-t flex gap-2">
-            <input type="file" accept="image/*" onChange={e=>setImageFile(e.target.files[0])} className="hidden" id="imgUpload" />
-            <label htmlFor="imgUpload" className="border p-2 rounded cursor-pointer">📷</label>
-            <input value={text} onChange={e=>setText(e.target.value)} placeholder="Message" className="flex-1 border p-2 rounded" />
-            <button onClick={sendMessage} className="bg-blue-600 text-white px-4 rounded">Send</button>
-          </div>
-        </>
-      )}
+  <div class="container hidden" id="room">
+    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+      <div id="roomInfo"></div>
+      <button id="leaveBtn" style="width:auto;">Leave</button>
     </div>
-  );
-}
+    <div class="messages" id="messages"></div>
+    <input type="file" id="imgUpload">
+    <input type="text" id="msgInput" placeholder="Type a message">
+    <button id="sendBtn">Send</button>
+  </div>
+
+  <script>
+    // Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyBaHvhQDLsIVISjIe_IDl6i-iERYJLTgaI",
+      authDomain: "anon-chat-39ea7.firebaseapp.com",
+      projectId: "anon-chat-39ea7",
+      storageBucket: "anon-chat-39ea7.appspot.com",
+      messagingSenderId: "809487057402",
+      appId: "1:809487057402:web:03bc9edc356bf3a69c6443"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const storage = firebase.storage();
+
+    // DOM
+    const lobby = document.getElementById('lobby');
+    const roomDiv = document.getElementById('room');
+    const roomInfo = document.getElementById('roomInfo');
+    const messagesDiv = document.getElementById('messages');
+    const nameInput = document.getElementById('name');
+    const joinCodeInput = document.getElementById('joinCode');
+    const msgInput = document.getElementById('msgInput');
+    const imgUpload = document.getElementById('imgUpload');
+
+    let roomCode = '';
+    let unsubscribe = null;
+    let username = '';
+
+    // Generate random name
+    function randomName() {
+      const adj = ["Quiet","Swift","Blue","Pixel","Shadow","Lucky","Silent","Brave","Tiny","Happy"];
+      const animals = ["Fox","Otter","Raven","Panda","Tiger","Wolf","Koala","Sparrow","Seal","Bee"];
+      return adj[Math.floor(Math.random()*adj.length)] + animals[Math.floor(Math.random()*animals.length)] + Math.floor(Math.random()*900+100);
+    }
+
+    function createRoom(){
+      username = nameInput.value || randomName();
+      roomCode = Math.random().toString(36).slice(2,8).toUpperCase();
+      db.collection('rooms').doc(roomCode).set({code:roomCode,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+      openRoom();
+    }
+
+    function joinRoom(){
+      username = nameInput.value || randomName();
+      roomCode = joinCodeInput.value.trim().toUpperCase();
+      if(!roomCode) return alert("Enter Room Code");
+      db.collection('rooms').doc(roomCode).get().then(docSnap=>{
+        if(!docSnap.exists) return alert("Room not found");
+        openRoom();
+      });
+    }
+
+    function openRoom(){
+      lobby.classList.add('hidden');
+      roomDiv.classList.remove('hidden');
+      roomInfo.innerText = 'Room: '+roomCode;
+      messagesDiv.innerHTML = '';
+      subscribe();
+    }
+
+    function leaveRoom(){
+      lobby.classList.remove('hidden');
+      roomDiv.classList.add('hidden');
+      if(unsubscribe) unsubscribe();
+      messagesDiv.innerHTML='';
+      roomCode='';
+    }
+
+    function subscribe(){
+      unsubscribe = db.collection('rooms').doc(roomCode).collection('messages').orderBy('createdAt')
+      .onSnapshot(snapshot=>{
+        messagesDiv.innerHTML='';
+        snapshot.forEach(doc=>{
+          const data = doc.data();
+          const div = document.createElement('div');
+          div.className='message';
+          div.innerHTML=`<b>${data.senderName}</b>: ${data.text||''}`;
+          if(data.imageURL){
+            const img = document.createElement('img');
+            img.src=data.imageURL;
+            div.appendChild(img);
+          }
+          messagesDiv.appendChild(div);
+        });
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      });
+    }
+
+    function sendMessage(){
+      if(!roomCode) return;
+      let file = imgUpload.files[0];
+      if(file){
+        const ref = storage.ref(`rooms/${roomCode}/images/${Date.now()}_${file.name}`);
+        ref.put(file).then(snapshot=>snapshot.ref.getDownloadURL().then(url=>{
+          db.collection('rooms').doc(roomCode).collection('messages').add({
+            senderName: username,
+            text: msgInput.value,
+            imageURL: url,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        }));
+        imgUpload.value='';
+      } else {
+        db.collection('rooms').doc(roomCode).collection('messages').add({
+          senderName: username,
+          text: msgInput.value,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+      msgInput.value='';
+    }
+
+    document.getElementById('createRoomBtn').onclick=createRoom;
+    document.getElementById('joinRoomBtn').onclick=joinRoom;
+    document.getElementById('leaveBtn').onclick=leaveRoom;
+    document.getElementById('sendBtn').onclick=sendMessage;
+  </script>
+</body>
+</html>
