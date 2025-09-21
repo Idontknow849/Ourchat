@@ -13,9 +13,10 @@
     input, button { padding:8px; margin-bottom:10px; border-radius:5px; border:1px solid #ccc; width:100%; box-sizing:border-box; }
     button { background:#3b82f6; color:#fff; border:none; cursor:pointer; }
     .messages { border:1px solid #ccc; height:300px; overflow-y:auto; padding:5px; margin-bottom:10px; border-radius:5px; background:#f9f9f9;}
-    .message { padding:5px; margin-bottom:5px; background:#e0e7ff; border-radius:5px; word-wrap:break-word;}
+    .message { padding:5px; margin-bottom:5px; background:#e0e7ff; border-radius:5px; word-wrap:break-word; display:flex; justify-content:space-between; align-items:center; }
     img { max-width:80%; margin-top:5px; border-radius:5px;}
     .hidden { display:none; }
+    .admin-btn { background:#ef4444; margin-left:5px; }
   </style>
 </head>
 <body>
@@ -25,6 +26,7 @@
     <button id="createRoomBtn">Create Room</button>
     <input type="text" id="joinCode" placeholder="Room Code">
     <button id="joinRoomBtn">Join Room</button>
+    <input type="password" id="adminPassword" placeholder="Admin Password (Optional)">
   </div>
 
   <div class="container hidden" id="room">
@@ -36,6 +38,7 @@
     <input type="file" id="imgUpload">
     <input type="text" id="msgInput" placeholder="Type a message">
     <button id="sendBtn">Send</button>
+    <button id="deleteRoomBtn" class="hidden" style="background:#ef4444;">Delete Entire Room (Admin)</button>
   </div>
 
   <script>
@@ -61,12 +64,15 @@
     const joinCodeInput = document.getElementById('joinCode');
     const msgInput = document.getElementById('msgInput');
     const imgUpload = document.getElementById('imgUpload');
+    const adminPasswordInput = document.getElementById('adminPassword');
+    const deleteRoomBtn = document.getElementById('deleteRoomBtn');
 
     let roomCode = '';
     let unsubscribe = null;
     let username = '';
+    let isAdmin = false;
+    const ADMIN_PASSWORD = 'golu200h'; // Set your admin password here
 
-    // Generate random name
     function randomName() {
       const adj = ["Quiet","Swift","Blue","Pixel","Shadow","Lucky","Silent","Brave","Tiny","Happy"];
       const animals = ["Fox","Otter","Raven","Panda","Tiger","Wolf","Koala","Sparrow","Seal","Bee"];
@@ -77,6 +83,7 @@
       username = nameInput.value || randomName();
       roomCode = Math.random().toString(36).slice(2,8).toUpperCase();
       db.collection('rooms').doc(roomCode).set({code:roomCode,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+      isAdmin = adminPasswordInput.value === ADMIN_PASSWORD;
       openRoom();
     }
 
@@ -85,7 +92,11 @@
       roomCode = joinCodeInput.value.trim().toUpperCase();
       if(!roomCode) return alert("Enter Room Code");
       db.collection('rooms').doc(roomCode).get().then(docSnap=>{
-        if(!docSnap.exists) return alert("Room not found");
+        if(!docSnap.exists){
+          alert("Room not found");
+          return;
+        }
+        isAdmin = adminPasswordInput.value === ADMIN_PASSWORD;
         openRoom();
       });
     }
@@ -94,6 +105,7 @@
       lobby.classList.add('hidden');
       roomDiv.classList.remove('hidden');
       roomInfo.innerText = 'Room: '+roomCode;
+      deleteRoomBtn.classList.toggle('hidden', !isAdmin);
       messagesDiv.innerHTML = '';
       subscribe();
     }
@@ -104,26 +116,35 @@
       if(unsubscribe) unsubscribe();
       messagesDiv.innerHTML='';
       roomCode='';
+      isAdmin=false;
     }
 
     function subscribe(){
-      unsubscribe = db.collection('rooms').doc(roomCode).collection('messages').orderBy('createdAt')
-      .onSnapshot(snapshot=>{
-        messagesDiv.innerHTML='';
-        snapshot.forEach(doc=>{
-          const data = doc.data();
-          const div = document.createElement('div');
-          div.className='message';
-          div.innerHTML=`<b>${data.senderName}</b>: ${data.text||''}`;
-          if(data.imageURL){
-            const img = document.createElement('img');
-            img.src=data.imageURL;
-            div.appendChild(img);
-          }
-          messagesDiv.appendChild(div);
+      unsubscribe = db.collection('rooms').doc(roomCode).collection('messages')
+        .orderBy('createdAt')
+        .onSnapshot(snapshot=>{
+          messagesDiv.innerHTML='';
+          snapshot.forEach(doc=>{
+            const data = doc.data();
+            const div = document.createElement('div');
+            div.className='message';
+            div.innerHTML=`<div><b>${data.senderName}</b>: ${data.text||''}</div>`;
+            if(data.imageURL){
+              const img = document.createElement('img');
+              img.src=data.imageURL;
+              div.appendChild(img);
+            }
+            if(isAdmin){
+              const delBtn = document.createElement('button');
+              delBtn.textContent='Delete';
+              delBtn.className='admin-btn';
+              delBtn.onclick = ()=>db.collection('rooms').doc(roomCode).collection('messages').doc(doc.id).delete();
+              div.appendChild(delBtn);
+            }
+            messagesDiv.appendChild(div);
+          });
+          messagesDiv.scrollTop = messagesDiv.scrollHeight;
         });
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-      });
     }
 
     function sendMessage(){
@@ -150,10 +171,20 @@
       msgInput.value='';
     }
 
+    function deleteRoom(){
+      if(!confirm('Delete entire room and all messages?')) return;
+      db.collection('rooms').doc(roomCode).collection('messages').get().then(snapshot=>{
+        snapshot.forEach(doc=>doc.ref.delete());
+        db.collection('rooms').doc(roomCode).delete();
+        leaveRoom();
+      });
+    }
+
     document.getElementById('createRoomBtn').onclick=createRoom;
     document.getElementById('joinRoomBtn').onclick=joinRoom;
     document.getElementById('leaveBtn').onclick=leaveRoom;
     document.getElementById('sendBtn').onclick=sendMessage;
+    deleteRoomBtn.onclick=deleteRoom;
   </script>
 </body>
 </html>
