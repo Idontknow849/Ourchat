@@ -41,18 +41,17 @@
   <script>
     // Firebase config
     const firebaseConfig = {
-      apiKey: "AIzaSyBaHvhQDLsIVISjIe_IDl6i-iERYJLTgaI",
-      authDomain: "anon-chat-39ea7.firebaseapp.com",
-      projectId: "anon-chat-39ea7",
-      storageBucket: "anon-chat-39ea7.appspot.com",
-      messagingSenderId: "809487057402",
-      appId: "1:809487057402:web:03bc9edc356bf3a69c6443"
+      apiKey: "AIzaSyB1rNMVcAroRxvLkJJQd9xGUrz1N4qv8Dk",
+      authDomain: "livechat-dee80.firebaseapp.com",
+      projectId: "livechat-dee80",
+      storageBucket: "livechat-dee80.appspot.com",
+      messagingSenderId: "498201299482",
+      appId: "1:498201299482:web:12181ddbe271036514dfa3"
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     const storage = firebase.storage();
 
-    // DOM
     const lobby = document.getElementById('lobby');
     const chatDiv = document.getElementById('chat');
     const messagesDiv = document.getElementById('messages');
@@ -66,7 +65,7 @@
     let username = '';
     let isAdmin = false;
     let unsubscribe = null;
-    const ADMIN_PASSWORD = 'golu200h'; // Set your admin password here
+    const ADMIN_PASSWORD = 'golu200h'; // Change admin password here
 
     function randomName() {
       const adj = ["Quiet","Swift","Blue","Pixel","Shadow","Lucky","Silent","Brave","Tiny","Happy"];
@@ -91,9 +90,9 @@
     }
 
     function subscribe() {
-      unsubscribe = db.collection('globalMessages').orderBy('createdAt')
+      unsubscribe = db.collection('globalMessages').orderBy('createdAt','asc')
         .onSnapshot(snapshot => {
-          messagesDiv.innerHTML = '';
+          messagesDiv.innerHTML='';
           snapshot.forEach(doc => {
             const data = doc.data();
             const div = document.createElement('div');
@@ -127,7 +126,7 @@
             senderName: username,
             text: msgInput.value,
             imageURL: url,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            createdAt: new Date()
           });
         }));
         imgUpload.value='';
@@ -135,7 +134,7 @@
         db.collection('globalMessages').add({
           senderName: username,
           text: msgInput.value,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          createdAt: new Date()
         });
       }
       msgInput.value='';
